@@ -6,7 +6,7 @@ A clean, RESTful CRUD API built with **FastAPI** and **Python** for task managem
 
 ## 📌 Project Overview
 
-This API manages a collection of tasks in memory with full **CRUD** (Create, Read, Update, Delete) capability, HTTP status code management, input validation, and interactive OpenAPI (Swagger UI) documentation.
+This API manages a collection of tasks in memory with full **CRUD** (Create, Read, Update, Delete) capability, HTTP status code management, input validation, seed reset functionality, and interactive OpenAPI (Swagger UI) documentation.
 
 ---
 
@@ -42,6 +42,15 @@ uvicorn main:app --reload
 | `POST` | `/tasks` | Creates a new task (`{"title": "..."}`) | `201 Created` | `400 Bad Request` |
 | `PUT` | `/tasks/{id}` | Updates task `title` and/or `done` status | `200 OK` | `400 Bad Request`, `404 Not Found` |
 | `DELETE` | `/tasks/{id}` | Deletes a task by ID | `204 No Content` | `404 Not Found` |
+| `POST` | `/reset` | Restores task list back to the initial 3 seed tasks | `200 OK` | — |
+
+---
+
+## 🔬 The Mortality Experiment
+
+> **What Happened:** When new tasks were added or modified while the server was running and the Uvicorn server was restarted, all newly created and modified tasks disappeared upon sending a `GET /tasks` request.
+>
+> **Why:** Because state is stored solely in-memory within Python's volatile RAM (`tasks` list variable), stopping the process destroys the memory space, causing the script to re-initialize from scratch with default seed data upon restart.
 
 ---
 

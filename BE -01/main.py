@@ -7,11 +7,13 @@ app = FastAPI(
     version="1.0"
 )
 
-tasks = [
+DEFAULT_TASKS = [
     {"id": 1, "title": "Buy groceries", "done": False},
     {"id": 2, "title": "Read a book", "done": True},
     {"id": 3, "title": "Learn FastAPI", "done": False},
 ]
+
+tasks = [dict(t) for t in DEFAULT_TASKS]
 
 @app.get("/", summary="Get API information")
 def read_root():
@@ -99,3 +101,11 @@ def delete_task(id: int):
             tasks.pop(i)
             return Response(status_code=204)
     return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+
+@app.post("/reset", summary="Reset task list to default seed data")
+def reset_tasks():
+    """Reset the in-memory tasks list back to the initial 3 example tasks."""
+    global tasks
+    tasks.clear()
+    tasks.extend([dict(t) for t in DEFAULT_TASKS])
+    return {"message": "Task list has been reset to default example tasks", "tasks": tasks}
