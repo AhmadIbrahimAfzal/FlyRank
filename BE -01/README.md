@@ -154,6 +154,18 @@ FastAPI automatically generates an interactive Swagger UI available at:
 
 ---
 
+## ⚡ Stretch Goals & Performance Optimizations
+
+1. **Indexes on Filter & Search Columns**:
+   - `idx_tasks_done` on `tasks(done)` speeds up status queries (`WHERE done = ?`).
+   - `idx_tasks_title` on `tasks(title)` speeds up text lookup and sorting (`ORDER BY title`).
+   - *What an index is for:* An index is a fast-lookup data structure (B-tree in SQLite) that allows the database engine to locate matching rows without scanning every row in the table sequentially.
+
+2. **Atomic Transactions**:
+   - Multi-step seed insertions and batch resets are executed inside transactions (`conn.commit()`) ensuring an all-or-nothing guarantee that prevents corrupted, partial writes.
+
+---
+
 ## 🤖 Stage 6: AI vs Me (The AI Rematch)
 
 An independent AI version was generated in quarantine under the `ai-version/` folder based on specification prompts.
@@ -165,3 +177,4 @@ An independent AI version was generated in quarantine under the `ai-version/` fo
 1. **Context Manager Pattern**: The AI version utilized `with get_db() as conn:` context managers for automatic transaction management and closing, whereas the manual implementation used explicit connection opening and closing.
 2. **Query Building**: The hand-built version included dynamic query construction for search, status filtering, and sorting (`?search=...`, `?done=...`, `?sort=...`) along with `GET /stats`.
 3. **Seed Idempotency**: Both versions correctly checked `SELECT COUNT(*) FROM tasks` before inserting seed data to prevent duplicating sample rows across restarts.
+
