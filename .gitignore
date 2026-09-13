@@ -36,3 +36,5 @@ ENV/
 .DS_Store
 *.swp
 *.log
+*.db
+tasks.db

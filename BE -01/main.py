@@ -1,19 +1,44 @@
+import os
+import sqlite3
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse, Response
 
 app = FastAPI(
     title="Task API",
-    description="A simple task management API built with FastAPI.",
+    description="A simple task management API built with FastAPI and SQLite.",
     version="1.0"
 )
 
-DEFAULT_TASKS = [
-    {"id": 1, "title": "Buy groceries", "done": False},
-    {"id": 2, "title": "Read a book", "done": True},
-    {"id": 3, "title": "Learn FastAPI", "done": False},
-]
+DB_PATH = os.path.join(os.path.dirname(__file__), "tasks.db")
 
-tasks = [dict(t) for t in DEFAULT_TASKS]
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    count = cursor.fetchone()[0]
+    if count == 0:
+        seed_tasks = [
+            ("Buy groceries", 0),
+            ("Read a book", 1),
+            ("Learn FastAPI", 0)
+        ]
+        cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", seed_tasks)
+        conn.commit()
+    conn.close()
+
+init_db()
 
 @app.get("/", summary="Get API information")
 def read_root():
