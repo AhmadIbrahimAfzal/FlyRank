@@ -54,6 +54,8 @@ def health_check():
     """Check if the server is healthy and alive."""
     return {"status": "ok"}
 
+from typing import Optional
+
 def format_task(row):
     return {
         "id": row["id"],
@@ -62,10 +64,34 @@ def format_task(row):
     }
 
 @app.get("/tasks", summary="List all tasks")
-def get_tasks():
-    """Retrieve the full list of task objects from the database."""
+def get_tasks(
+    done: Optional[bool] = None,
+    search: Optional[str] = None,
+    sort: Optional[str] = None
+):
+    """Retrieve tasks with optional filtering, search, and sorting from SQLite."""
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    query = "SELECT * FROM tasks"
+    conditions = []
+    params = []
+    
+    if done is not None:
+        conditions.append("done = ?")
+        params.append(1 if done else 0)
+        
+    if search is not None and search.strip():
+        conditions.append("title LIKE ?")
+        params.append(f"%{search.strip()}%")
+        
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        
+    if sort == "title":
+        query += " ORDER BY title ASC"
+    else:
+        query += " ORDER BY id ASC"
+        
+    rows = conn.execute(query, params).fetchall()
     conn.close()
     return [format_task(row) for row in rows]
 
@@ -102,52 +128,89 @@ def create_task(payload: dict = Body(default={})):
 
 @app.put("/tasks/{id}", summary="Update an existing task")
 def update_task(id: int, payload: dict = Body(default={})):
-    """Update title and/or done status for a task by ID."""
+    """Update title and/or done status for a task by ID in the database."""
     if not isinstance(payload, dict) or not payload:
         return JSONResponse(status_code=400, content={"error": "Request body cannot be empty"})
     
-    task_to_update = None
-    for task in tasks:
-        if task["id"] == id:
-            task_to_update = task
-            break
-            
-    if not task_to_update:
+    conn = get_db_connection()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    if row is None:
+        conn.close()
         return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
     
+    current_title = row["title"]
+    current_done = row["done"]
     has_update = False
+    
     if "title" in payload:
         title = payload["title"]
         if not isinstance(title, str) or not title.strip():
+            conn.close()
             return JSONResponse(status_code=400, content={"error": "Title cannot be empty"})
-        task_to_update["title"] = title.strip()
+        current_title = title.strip()
         has_update = True
         
     if "done" in payload:
         done = payload["done"]
         if not isinstance(done, bool):
+            conn.close()
             return JSONResponse(status_code=400, content={"error": "Done must be a boolean"})
-        task_to_update["done"] = done
+        current_done = 1 if done else 0
         has_update = True
         
     if not has_update:
+        conn.close()
         return JSONResponse(status_code=400, content={"error": "No valid fields to update"})
         
-    return task_to_update
+    conn.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (current_title, current_done, id))
+    conn.commit()
+    updated_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    conn.close()
+    
+    return format_task(updated_row)
 
 @app.delete("/tasks/{id}", summary="Delete a task by ID")
 def delete_task(id: int):
-    """Delete a task by ID and return 204 No Content."""
-    for i, task in enumerate(tasks):
-        if task["id"] == id:
-            tasks.pop(i)
-            return Response(status_code=204)
-    return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+    """Delete a task by ID from the database and return 204 No Content."""
+    conn = get_db_connection()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    if row is None:
+        conn.close()
+        return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+    
+    conn.execute("DELETE FROM tasks WHERE id = ?", (id,))
+    conn.commit()
+    conn.close()
+    return Response(status_code=204)
 
-@app.post("/reset", summary="Reset task list to default seed data")
+@app.get("/stats", summary="Task statistics")
+def get_stats():
+    """Retrieve task counts directly computed with SQL COUNT(*)."""
+    conn = get_db_connection()
+    total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+    done_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = 1").fetchone()[0]
+    open_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = 0").fetchone()[0]
+    conn.close()
+    return {
+        "total": total,
+        "done": done_count,
+        "open": open_count
+    }
+
+@app.post("/reset", summary="Reset database to default seed data")
 def reset_tasks():
-    """Reset the in-memory tasks list back to the initial 3 example tasks."""
-    global tasks
-    tasks.clear()
-    tasks.extend([dict(t) for t in DEFAULT_TASKS])
-    return {"message": "Task list has been reset to default example tasks", "tasks": tasks}
+    """Reset the database tasks table back to the initial 3 example tasks."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tasks")
+    cursor.execute("DELETE FROM sqlite_sequence WHERE name='tasks'")
+    seed_tasks = [
+        ("Buy groceries", 0),
+        ("Read a book", 1),
+        ("Learn FastAPI", 0)
+    ]
+    cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", seed_tasks)
+    conn.commit()
+    rows = cursor.execute("SELECT * FROM tasks ORDER BY id ASC").fetchall()
+    conn.close()
+    return {"message": "Task database has been reset to default example tasks", "tasks": [format_task(r) for r in rows]}
