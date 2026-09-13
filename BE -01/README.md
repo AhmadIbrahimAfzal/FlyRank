@@ -1,52 +1,47 @@
-# Task API (BE-01 · Week 3 / Assignment A2)
+# Task API (BE-01 · Week 3 / Assignment A3)
 
-A clean, production-grade RESTful CRUD API built with **FastAPI**, **Python**, and a **SQLite** database (`tasks.db`).
+A production-grade RESTful CRUD API built with **FastAPI**, **Python**, and a **PostgreSQL** database, fully containerized with **Docker** and **Docker Compose**.
 
 ---
 
 ## 📌 Project Overview
 
-In Week 2, the API stored data in-memory. In Week 3 (Assignment A2), the storage layer was completely migrated to a persistent **SQLite database (`tasks.db`)**. 
+This assignment represents the third storage evolution of our Task API:
+1. **Assignment 1:** In-memory list *(volatile RAM)*
+2. **Assignment 2:** SQLite file *(single file on local disk)*
+3. **Assignment 3 (This project):** **Containerized PostgreSQL Database** managed via **Docker Compose**
 
-The API interface, endpoints, response schemas, and status codes remain 100% consistent, but data now **survives server restarts**.
-
----
-
-## 💡 Why SQLite?
-
-- **Zero-Configuration & Serverless**: SQLite requires no external database daemon or background process.
-- **Single File Storage**: All tables, schema definitions, and rows reside in a single file (`tasks.db`).
-- **Disk Persistence**: Data reliably persists across server restarts and crashes.
-- **Safe & Standard**: Utilizes Python's built-in `sqlite3` library with parameterized queries (`?`) to prevent SQL injection vulnerabilities.
+The API endpoints, request schemas, status codes, and validation rules remain 100% consistent, while the underlying storage is powered by a real PostgreSQL server.
 
 ---
 
-## 📁 Database File Location & Auto-Creation
-
-- **Database File**: Located at `BE -01/tasks.db` (created automatically upon application startup).
-- **Auto-Initialization & Seeding**: If `tasks.db` does not exist or the table is empty, the database creates the `tasks` table and seeds 3 initial tasks.
-- **Clean Clone**: `tasks.db` is `.gitignore`d so every fresh clone initializes cleanly with a single command.
-
----
-
-## 🚀 Quick Start (Install & Run)
+## 🚀 One-Command Quick Start
 
 ### 1. Prerequisites
-- Python 3.10+
-- `pip` package manager
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running with WSL 2 or Hyper-V backend)
 
-### 2. Installation
-Install the required packages:
+### 2. Environment Configuration
+Copy the example environment file:
 ```bash
-pip install fastapi uvicorn watchfiles
+cp .env.example .env
+```
+The default `.env` includes:
+```env
+DATABASE_URL=postgresql://postgres:dev@localhost:5432/tasks
 ```
 
-### 3. Run the Server
-From the `BE -01` directory, start the development server:
+### 3. Run the Entire Stack
+Start both the FastAPI application and PostgreSQL database with a single command:
 ```bash
-uvicorn main:app --reload
+docker compose up --build
 ```
-> The API will be live at `http://127.0.0.1:8000`
+> The API will be live at `http://127.0.0.1:8000`  
+> Interactive Swagger Documentation: `http://127.0.0.1:8000/docs`
+
+To stop the stack:
+```bash
+docker compose down
+```
 
 ---
 
@@ -55,7 +50,7 @@ uvicorn main:app --reload
 | Method | Endpoint | Description | Success Status | Error Status |
 | :--- | :--- | :--- | :---: | :---: |
 | `GET` | `/` | API metadata and documentation info | `200 OK` | — |
-| `GET` | `/health` | Server health check endpoint | `200 OK` | — |
+| `GET` | `/health` | Health check endpoint | `200 OK` | — |
 | `GET` | `/tasks` | List all tasks (supports `?done=true`, `?search=query`, `?sort=title`) | `200 OK` | — |
 | `GET` | `/tasks/{id}` | Retrieve a single task by ID | `200 OK` | `404 Not Found` |
 | `POST` | `/tasks` | Create a new task (`{"title": "..."}`) | `201 Created` | `400 Bad Request` |
@@ -66,61 +61,36 @@ uvicorn main:app --reload
 
 ---
 
-## 🔍 Stage 4: SQL Explored by Hand (DB Browser for SQLite)
-
-During manual inspection of `tasks.db` in **DB Browser for SQLite**, the following queries were executed:
-
-```sql
--- 1. List all tasks
-SELECT * FROM tasks;
-
--- 2. Fetch only completed tasks
-SELECT * FROM tasks WHERE done = 1;
-
--- 3. Count total number of tasks
-SELECT COUNT(*) FROM tasks;
-
--- 4. Mark all tasks as completed
-UPDATE tasks SET done = 1;
-
--- 5. Delete completed tasks
-DELETE FROM tasks WHERE done = 1;
-```
-
-**Observation:** Direct modifications made via DB Browser for SQLite reflected immediately on API endpoints (`GET /tasks`) without needing to restart the server, proving that the SQLite database file serves as the single source of truth.
-
----
-
 ## 💻 Sample `curl -i` Command & Response Output
 
-### 1. `GET /tasks/1` (Read Task)
+### 1. `GET /tasks` (Read All Tasks)
 ```bash
-curl -i http://127.0.0.1:8000/tasks/1
+curl -i http://127.0.0.1:8000/tasks
 ```
 ```http
 HTTP/1.1 200 OK
-date: Sun, 13 Sep 2026 10:20:00 GMT
+date: Sun, 13 Sep 2026 11:57:39 GMT
 server: uvicorn
-content-length: 51
+content-length: 136
 content-type: application/json
 
-{"id":1,"title":"Buy groceries","done":false}
+[{"id":1,"title":"Buy groceries","done":false},{"id":2,"title":"Read a book","done":true},{"id":3,"title":"Learn FastAPI","done":false}]
 ```
 
-### 2. `POST /tasks` (Create Task)
+### 2. `POST /tasks` (Create Task with Postgres `RETURNING`)
 ```bash
 curl -i -X POST http://127.0.0.1:8000/tasks \
   -H "Content-Type: application/json" \
-  -d "{\"title\": \"Finish Backend Assignment\"}"
+  -d '{"title": "Containerize with Docker"}'
 ```
 ```http
 HTTP/1.1 201 Created
-date: Sun, 13 Sep 2026 10:20:05 GMT
+date: Sun, 13 Sep 2026 11:58:05 GMT
 server: uvicorn
-content-length: 58
+content-length: 56
 content-type: application/json
 
-{"id":4,"title":"Finish Backend Assignment","done":false}
+{"id":4,"title":"Containerize with Docker","done":false}
 ```
 
 ### 3. `GET /tasks/999` (404 Error Handling)
@@ -129,7 +99,7 @@ curl -i http://127.0.0.1:8000/tasks/999
 ```
 ```http
 HTTP/1.1 404 Not Found
-date: Sun, 13 Sep 2026 10:20:10 GMT
+date: Sun, 13 Sep 2026 11:58:10 GMT
 server: uvicorn
 content-length: 30
 content-type: application/json
@@ -139,42 +109,42 @@ content-type: application/json
 
 ---
 
-## 🎨 Interactive API Documentation (Swagger UI)
+## 🗄️ Database Inspection Inside Container
 
-FastAPI automatically generates an interactive Swagger UI available at:
-👉 **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**
+You can inspect the PostgreSQL database directly inside the container via `docker exec`:
 
-![Swagger UI Screenshot](./swagger_ui.png)
+```bash
+docker exec -it be-01-db-1 psql -U postgres -d tasks
+```
+
+```text
+tasks=# \dt
+         List of relations
+ Schema | Name  | Type  |  Owner   
+--------+-------+-------+----------
+ public | tasks | table | postgres
+(1 row)
+
+tasks=# SELECT * FROM tasks;
+ id |          title          | done 
+----+-------------------------+------
+  1 | Buy groceries           | f
+  2 | Read a book             | t
+  3 | Learn FastAPI           | f
+  4 | Containerize with Docker| f
+(4 rows)
+```
 
 ---
 
-## 🔬 The Mortality Experiment & Persistence
+## 💾 Persistence Across Restarts (Named Volume)
 
-> **Observation:** In Week 2, restarting the server erased all newly added tasks because memory (RAM) is ephemeral. In Week 3, because data is written to disk via SQLite (`tasks.db`), stopping and restarting the server leaves all tasks completely intact.
-
----
-
-## ⚡ Stretch Goals & Performance Optimizations
-
-1. **Indexes on Filter & Search Columns**:
-   - `idx_tasks_done` on `tasks(done)` speeds up status queries (`WHERE done = ?`).
-   - `idx_tasks_title` on `tasks(title)` speeds up text lookup and sorting (`ORDER BY title`).
-   - *What an index is for:* An index is a fast-lookup data structure (B-tree in SQLite) that allows the database engine to locate matching rows without scanning every row in the table sequentially.
-
-2. **Atomic Transactions**:
-   - Multi-step seed insertions and batch resets are executed inside transactions (`conn.commit()`) ensuring an all-or-nothing guarantee that prevents corrupted, partial writes.
+- Database storage is mapped to the named volume **`taskdata`** (`taskdata:/var/lib/postgresql/data`).
+- When you execute `docker compose down` and later `docker compose up`, your tasks are completely preserved because the volume outlives the containers.
 
 ---
 
-## 🤖 Stage 6: AI vs Me (The AI Rematch)
+## 🔒 Secret Management (.env)
 
-An independent AI version was generated in quarantine under the `ai-version/` folder based on specification prompts.
-
-### Prompt Used:
-> *"Build a complete FastAPI REST CRUD API backed by SQLite (`tasks.db`) using Python's standard `sqlite3` library. The database table `tasks` must have columns `id` (INTEGER PRIMARY KEY AUTOINCREMENT), `title` (TEXT NOT NULL), and `done` (INTEGER NOT NULL DEFAULT 0). The table must be created if missing, and seeded with 3 default tasks only when the count is 0. Implement GET /tasks, GET /tasks/{id}, POST /tasks (400 on empty/missing title, 201 on success), PUT /tasks/{id} (400 on empty body, 404 on missing id), and DELETE /tasks/{id} (204 on success, 404 on missing id). Always use parameterized SQL queries (`?`) for safety."*
-
-### Key Comparison Differences:
-1. **Context Manager Pattern**: The AI version utilized `with get_db() as conn:` context managers for automatic transaction management and closing, whereas the manual implementation used explicit connection opening and closing.
-2. **Query Building**: The hand-built version included dynamic query construction for search, status filtering, and sorting (`?search=...`, `?done=...`, `?sort=...`) along with `GET /stats`.
-3. **Seed Idempotency**: Both versions correctly checked `SELECT COUNT(*) FROM tasks` before inserting seed data to prevent duplicating sample rows across restarts.
-
+- **`.env`** holds your local connection credentials and is excluded from source control via `.gitignore`.
+- **`.env.example`** is committed to the repository so anyone cloning the project knows which variables to configure.
