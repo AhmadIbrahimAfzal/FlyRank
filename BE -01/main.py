@@ -54,18 +54,30 @@ def health_check():
     """Check if the server is healthy and alive."""
     return {"status": "ok"}
 
+def format_task(row):
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
+
 @app.get("/tasks", summary="List all tasks")
 def get_tasks():
-    """Retrieve the full list of task objects."""
-    return tasks
+    """Retrieve the full list of task objects from the database."""
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM tasks").fetchall()
+    conn.close()
+    return [format_task(row) for row in rows]
 
 @app.get("/tasks/{id}", summary="Get a task by ID")
 def get_task(id: int):
-    """Retrieve a single task object by its unique ID, or return 404 if not found."""
-    for task in tasks:
-        if task["id"] == id:
-            return task
-    return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+    """Retrieve a single task object by its unique ID from the database, or return 404 if not found."""
+    conn = get_db_connection()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    conn.close()
+    if row is None:
+        return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
+    return format_task(row)
 
 @app.post("/tasks", summary="Create a new task")
 def create_task(payload: dict = Body(default={})):
