@@ -38,3 +38,8 @@ ENV/
 *.log
 *.db
 tasks.db
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
