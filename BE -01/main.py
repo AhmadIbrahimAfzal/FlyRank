@@ -117,18 +117,13 @@ def create_task(payload: dict = Body(default={})):
         return JSONResponse(status_code=400, content={"error": "Title is required and cannot be empty"})
     
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (title.strip(), 0))
-    new_id = cursor.lastrowid
+    row = conn.execute(
+        "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING id, title, done",
+        (title.strip(), False)
+    ).fetchone()
     conn.commit()
     conn.close()
-    
-    new_task = {
-        "id": new_id,
-        "title": title.strip(),
-        "done": False
-    }
-    return JSONResponse(status_code=201, content=new_task)
+    return JSONResponse(status_code=201, content=format_task(row))
 
 @app.put("/tasks/{id}", summary="Update an existing task")
 def update_task(id: int, payload: dict = Body(default={})):
@@ -137,7 +132,7 @@ def update_task(id: int, payload: dict = Body(default={})):
         return JSONResponse(status_code=400, content={"error": "Request body cannot be empty"})
     
     conn = get_db_connection()
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    row = conn.execute("SELECT id, title, done FROM tasks WHERE id = %s", (id,)).fetchone()
     if row is None:
         conn.close()
         return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
@@ -159,16 +154,18 @@ def update_task(id: int, payload: dict = Body(default={})):
         if not isinstance(done, bool):
             conn.close()
             return JSONResponse(status_code=400, content={"error": "Done must be a boolean"})
-        current_done = 1 if done else 0
+        current_done = done
         has_update = True
         
     if not has_update:
         conn.close()
         return JSONResponse(status_code=400, content={"error": "No valid fields to update"})
         
-    conn.execute("UPDATE tasks SET title = ?, done = ? WHERE id = ?", (current_title, current_done, id))
+    updated_row = conn.execute(
+        "UPDATE tasks SET title = %s, done = %s WHERE id = %s RETURNING id, title, done",
+        (current_title, current_done, id)
+    ).fetchone()
     conn.commit()
-    updated_row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
     conn.close()
     
     return format_task(updated_row)
@@ -177,12 +174,12 @@ def update_task(id: int, payload: dict = Body(default={})):
 def delete_task(id: int):
     """Delete a task by ID from the database and return 204 No Content."""
     conn = get_db_connection()
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    row = conn.execute("SELECT id FROM tasks WHERE id = %s", (id,)).fetchone()
     if row is None:
         conn.close()
         return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
     
-    conn.execute("DELETE FROM tasks WHERE id = ?", (id,))
+    conn.execute("DELETE FROM tasks WHERE id = %s", (id,))
     conn.commit()
     conn.close()
     return Response(status_code=204)
@@ -191,9 +188,9 @@ def delete_task(id: int):
 def get_stats():
     """Retrieve task counts directly computed with SQL COUNT(*)."""
     conn = get_db_connection()
-    total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-    done_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = 1").fetchone()[0]
-    open_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = 0").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()["count"]
+    done_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = TRUE").fetchone()["count"]
+    open_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE done = FALSE").fetchone()["count"]
     conn.close()
     return {
         "total": total,
@@ -205,16 +202,16 @@ def get_stats():
 def reset_tasks():
     """Reset the database tasks table back to the initial 3 example tasks."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM tasks")
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name='tasks'")
-    seed_tasks = [
-        ("Buy groceries", 0),
-        ("Read a book", 1),
-        ("Learn FastAPI", 0)
-    ]
-    cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", seed_tasks)
-    conn.commit()
-    rows = cursor.execute("SELECT * FROM tasks ORDER BY id ASC").fetchall()
+    with conn.cursor() as cursor:
+        cursor.execute("TRUNCATE TABLE tasks RESTART IDENTITY")
+        seed_tasks = [
+            ("Buy groceries", False),
+            ("Read a book", True),
+            ("Learn FastAPI", False)
+        ]
+        cursor.executemany("INSERT INTO tasks (title, done) VALUES (%s, %s)", seed_tasks)
+        conn.commit()
+        cursor.execute("SELECT id, title, done FROM tasks ORDER BY id ASC")
+        rows = cursor.fetchall()
     conn.close()
     return {"message": "Task database has been reset to default example tasks", "tasks": [format_task(r) for r in rows]}
