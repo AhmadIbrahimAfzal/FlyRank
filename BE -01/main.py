@@ -73,18 +73,18 @@ def get_tasks(
     search: Optional[str] = None,
     sort: Optional[str] = None
 ):
-    """Retrieve tasks with optional filtering, search, and sorting from SQLite."""
+    """Retrieve tasks with optional filtering, search, and sorting from PostgreSQL."""
     conn = get_db_connection()
-    query = "SELECT * FROM tasks"
+    query = "SELECT id, title, done FROM tasks"
     conditions = []
     params = []
     
     if done is not None:
-        conditions.append("done = ?")
-        params.append(1 if done else 0)
+        conditions.append("done = %s")
+        params.append(done)
         
     if search is not None and search.strip():
-        conditions.append("title LIKE ?")
+        conditions.append("title ILIKE %s")
         params.append(f"%{search.strip()}%")
         
     if conditions:
@@ -103,7 +103,7 @@ def get_tasks(
 def get_task(id: int):
     """Retrieve a single task object by its unique ID from the database, or return 404 if not found."""
     conn = get_db_connection()
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (id,)).fetchone()
+    row = conn.execute("SELECT id, title, done FROM tasks WHERE id = %s", (id,)).fetchone()
     conn.close()
     if row is None:
         return JSONResponse(status_code=404, content={"error": f"Task {id} not found"})
