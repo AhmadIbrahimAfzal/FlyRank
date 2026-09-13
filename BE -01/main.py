@@ -1,43 +1,45 @@
 import os
-import sqlite3
+import psycopg
+from psycopg.rows import dict_row
+from dotenv import load_dotenv
 from fastapi import FastAPI, Body
 from fastapi.responses import JSONResponse, Response
 
+load_dotenv()
+
 app = FastAPI(
     title="Task API",
-    description="A simple task management API built with FastAPI and SQLite.",
+    description="A simple task management API built with FastAPI and PostgreSQL.",
     version="1.0"
 )
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "tasks.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:dev@localhost:5432/tasks")
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return psycopg.connect(DATABASE_URL, row_factory=dict_row)
 
 def init_db():
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            done INTEGER NOT NULL DEFAULT 0
-        )
-    """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks (done)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_title ON tasks (title)")
-    cursor.execute("SELECT COUNT(*) FROM tasks")
-    count = cursor.fetchone()[0]
-    if count == 0:
-        seed_tasks = [
-            ("Buy groceries", 0),
-            ("Read a book", 1),
-            ("Learn FastAPI", 0)
-        ]
-        cursor.executemany("INSERT INTO tasks (title, done) VALUES (?, ?)", seed_tasks)
-        conn.commit()
+    with conn.cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                done BOOLEAN NOT NULL DEFAULT FALSE
+            );
+            CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks (done);
+            CREATE INDEX IF NOT EXISTS idx_tasks_title ON tasks (title);
+        """)
+        cursor.execute("SELECT COUNT(*) FROM tasks")
+        count = cursor.fetchone()["count"]
+        if count == 0:
+            seed_tasks = [
+                ("Buy groceries", False),
+                ("Read a book", True),
+                ("Learn FastAPI", False)
+            ]
+            cursor.executemany("INSERT INTO tasks (title, done) VALUES (%s, %s)", seed_tasks)
+            conn.commit()
     conn.close()
 
 init_db()
