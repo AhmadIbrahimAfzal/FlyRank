@@ -81,18 +81,23 @@ def get_task(id: int):
 
 @app.post("/tasks", summary="Create a new task")
 def create_task(payload: dict = Body(default={})):
-    """Create a new task with a given title."""
+    """Create a new task with a given title in the database."""
     title = payload.get("title") if isinstance(payload, dict) else None
     if not title or not isinstance(title, str) or not title.strip():
         return JSONResponse(status_code=400, content={"error": "Title is required and cannot be empty"})
     
-    next_id = max([t["id"] for t in tasks], default=0) + 1
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (title.strip(), 0))
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
     new_task = {
-        "id": next_id,
+        "id": new_id,
         "title": title.strip(),
         "done": False
     }
-    tasks.append(new_task)
     return JSONResponse(status_code=201, content=new_task)
 
 @app.put("/tasks/{id}", summary="Update an existing task")
